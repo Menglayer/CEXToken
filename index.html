@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CEX 平台币雷达 | CEX Platform Token Radar</title>
+  <meta name="theme-color" content="#7aefff">
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: '#7aefff',
+            brandDark: '#4fd9f1'
+          },
+          boxShadow: {
+            soft: '0 10px 30px rgba(0,0,0,.08)'
+          }
+        }
+      }
+    }
+  </script>
+  <!-- ECharts -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    html,body{height:100%}
+    body{
+      background: linear-gradient(135deg,#7aefff 0%, #d8f6ff 45%, #ffffff 100%);
+      background-attachment: fixed;
+      color:#0f172a;
+    }
+    .glass{background:rgba(255,255,255,.6);backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,.5)}
+    .chip{border:1px solid rgba(15,23,42,.08); transition: all .18s ease;}
+    .chip.active{
+      background: linear-gradient(135deg, var(--brand1,#7aefff), var(--brand2,#4fd9f1));
+      color:#0f172a; font-weight:600; border-color: rgba(6,34,58,.12);
+      box-shadow: 0 6px 16px rgba(0,0,0,.08) inset, 0 8px 18px rgba(0,0,0,.06);
+    }
+    .ellipsis{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+    .hoverlift{transition: transform .2s ease, box-shadow .2s ease}
+    .hoverlift:hover{transform: translateY(-2px); box-shadow: 0 12px 24px rgba(0,0,0,.08)}
+    .badge{font-size:.75rem; padding:.15rem .4rem; border-radius:.5rem; background:rgba(15,23,42,.06)}
+    .scrollthin::-webkit-scrollbar{height:8px;width:8px}
+    .scrollthin::-webkit-scrollbar-thumb{background:rgba(15,23,42,.15); border-radius:8px}
+    .table-fixed-layout table{table-layout: fixed}
+    /* --- Fix 1: ICON 不变形 --- */
+    .token-ic{
+      width:28px; height:28px; border-radius:50%;
+      background:#fff; border:1px solid rgba(0,0,0,.06);
+      object-fit: contain; aspect-ratio: 1 / 1;
+      image-rendering: -webkit-optimize-contrast;
+    }
+    /* --- Fix 2: 右侧裁切 --- */
+    .tableWrap{overflow:auto; padding-right:14px; padding-bottom:8px;}
+    .tableWrap table{min-width:1200px}
+  </style>
+</head>
+<body>
+  <!-- Top Bar -->
+  <header class="glass sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 md:px-6 py-3 flex items-center gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-2xl bg-white shadow flex items-center justify-center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="#0ea5e9" stroke-width="2"/>
+            <path d="M6 14c3-6 9-6 12 0" stroke="#0ea5e9" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="12" cy="12" r="2.2" fill="#0ea5e9"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg md:text-xl font-semibold">CEX 平台币雷达</h1>
+          <div class="text-xs text-slate-600" data-i18n="subtitle">Centralized Exchange (CEX) Platform Token Radar</div>
+        </div>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <button id="langToggle" class="chip glass hoverlift text-sm px-3 py-1.5 rounded-xl" data-i18n="lang">中文 / EN</button>
+        <a href="https://x.com/menglayer" target="_blank" class="hoverlift inline-flex items-center gap-2 bg-black text-white px-3 py-1.5 rounded-xl">
+          <svg width="16" height="16" viewBox="0 0 1200 1227" fill="currentColor"><path d="M714 519L1160 0H1034L668 426L410 0H0L468 726L0 1227H126L512 779L790 1227H1200L714 519ZM574 711L518 631L172 160H360L646 572L702 651L1056 1100H868L574 711Z"/></svg>
+          <span data-i18n="follow">关注我</span>
+        </a>
+        <button id="reloadBtn" class="chip glass hoverlift text-sm px-3 py-1.5 rounded-xl" data-i18n="reload">刷新数据</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Content -->
+  <main class="max-w-7xl mx-auto px-4 md:px-6 py-6">
+    <!-- Summary & Controls -->
+    <section class="grid md:grid-cols-12 gap-4">
+      <div class="md:col-span-8 glass rounded-2xl p-4 shadow-soft hoverlift">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="text-sm text-slate-600" id="lastUpdated" data-i18n="updating">正在加载...</div>
+          <div class="ml-auto flex flex-wrap items-center gap-2">
+            <!-- 改为仅切换 .active，避免文字变白 -->
+            <button data-filter="top10" class="chip bg-white/70 rounded-xl px-3 py-1.5 text-sm hoverlift" data-i18n="top10">Top 10</button>
+            <button data-filter="movers" class="chip bg-white/70 rounded-xl px-3 py-1.5 text-sm hoverlift" data-i18n="movers">24h 涨幅</button>
+            <button data-filter="watch" class="chip bg-white/70 rounded-xl px-3 py-1.5 text-sm hoverlift" data-i18n="watchlist">自选</button>
+            <button id="exportCsv" class="chip bg-white/70 rounded-xl px-3 py-1.5 text-sm hoverlift" data-i18n="export">导出 CSV</button>
+          </div>
+        </div>
+        <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="glass rounded-xl p-3">
+            <div class="text-xs text-slate-600" data-i18n="totalMc">分类总市值 (USD)</div>
+            <div id="sumMc" class="text-lg font-semibold">$—</div>
+          </div>
+          <div class="glass rounded-xl p-3">
+            <div class="text-xs text-slate-600" data-i18n="count">平台币数量</div>
+            <div id="tokenCount" class="text-lg font-semibold">—</div>
+          </div>
+          <div class="glass rounded-xl p-3">
+            <div class="text-xs text-slate-600" data-i18n="avgLiq">平均流动性 (Vol/MC)</div>
+            <div id="avgLiq" class="text-lg font-semibold">—</div>
+          </div>
+          <div class="glass rounded-xl p-3">
+            <div class="text-xs text-slate-600" data-i18n="avgMom">平均动量 (7D)</div>
+            <div id="avgMom" class="text-lg font-semibold">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="md:col-span-4 glass rounded-2xl p-4 shadow-soft hoverlift">
+        <div class="flex items-center gap-2">
+          <input id="searchInput" class="w-full bg-white/70 rounded-xl border border-white/60 px-3 py-2 outline-none" placeholder="搜索（名称/代号）" />
+          <select id="sortSelect" class="bg-white/70 rounded-xl border border-white/60 px-3 py-2">
+            <option value="mc_desc">市值↓</option>
+            <option value="mc_asc">市值↑</option>
+            <option value="pct24_desc">24h%↓</option>
+            <option value="pct24_asc">24h%↑</option>
+            <option value="liq_desc">流动性↓</option>
+            <option value="liq_asc">流动性↑</option>
+            <option value="mom7d_desc">动量7D↓</option>
+            <option value="mom7d_asc">动量7D↑</option>
+            <option value="ath_desc">接近ATH↓</option>
+            <option value="ath_asc">接近ATH↑</option>
+          </select>
+        </div>
+        <div class="text-xs text-slate-600 mt-2" data-i18n="hint">选择最多 3 个平台币进行雷达对比。</div>
+      </div>
+    </section>
+
+    <!-- Radar + Selected -->
+    <section class="mt-5 grid md:grid-cols-12 gap-4">
+      <div class="md:col-span-8 glass rounded-2xl p-4 shadow-soft hoverlift">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold" data-i18n="radarTitle">雷达对比</div>
+          <div id="selectedChips" class="flex items-center gap-2"></div>
+        </div>
+        <div id="radar" style="height: 420px;"></div>
+      </div>
+      <div class="md:col-span-4 glass rounded-2xl p-4 shadow-soft hoverlift">
+        <div class="font-semibold mb-2" data-i18n="metrics">指标说明</div>
+        <ul class="text-sm leading-6 text-slate-700 list-disc pl-5">
+          <li><span class="badge">Size</span> 市值规模（对数标准化）</li>
+          <li><span class="badge">Liquidity</span> 24h成交额/市值</li>
+          <li><span class="badge">Momentum</span> 7D 涨跌幅</li>
+          <li><span class="badge">Stability</span> 7D 波动率的反向分数</li>
+          <li><span class="badge">ATH Proximity</span> 接近历史高点程度（越高越好）</li>
+          <li><span class="badge">1Y Trend</span> 1 年涨跌幅</li>
+        </ul>
+        <div class="text-xs text-slate-500 mt-2" data-i18n="disclaimer">
+          数据来自 CoinGecko，仅供参考，非投资建议。
+        </div>
+      </div>
+    </section>
+
+    <!-- Table -->
+    <section class="mt-5 glass rounded-2xl p-3 md:p-4 shadow-soft hoverlift table-fixed-layout">
+      <div class="tableWrap scrollthin">
+        <table class="w-full min-w-full text-sm">
+          <thead class="text-slate-600">
+            <tr class="border-b border-white/60">
+              <th class="text-left p-2 w-10"></th>
+              <th class="text-left p-2 w-[260px]" data-i18n="thToken">平台币</th>
+              <th class="text-right p-2 w-[110px]" data-i18n="thPrice">价格</th>
+              <th class="text-right p-2 w-[90px]" data-i18n="th24h">24h%</th>
+              <th class="text-right p-2 w-[90px]" data-i18n="th7d">7d%</th>
+              <th class="text-right p-2 w-[150px]" data-i18n="thMc">市值</th>
+              <th class="text-right p-2 w-[130px]" data-i18n="thLiq">流动性(Vol/MC)</th>
+              <th class="text-right p-2 w-[120px]" data-i18n="thVol">7d波动(σ)</th>
+              <th class="text-right p-2 w-[110px]" data-i18n="thAth">距ATH</th>
+              <th class="text-center p-2 w-[90px]" data-i18n="thCompare">对比</th>
+              <th class="text-center p-2 w-[84px]" data-i18n="thWatch">自选</th>
+              <th class="text-left p-2 w-[200px] pr-3" data-i18n="thLink">链接</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+  ;(function(){
+    const API = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=centralized-exchange-token-cex&order=market_cap_desc&per_page=250&page=1&sparkline=true&price_change_percentage=24h,7d,30d,1y';
+    const CACHE_KEY = 'cexTokensCache_v1';
+    const TTL_MS = 30*60*1000; // 30 minutes
+
+    const i18nDict = {
+      zh: {
+        subtitle:'Centralized Exchange (CEX) Platform Token Radar',
+        lang:'中文 / EN',
+        follow:'关注我',
+        reload:'刷新数据',
+        updating:'正在加载...',
+        top10:'Top 10',
+        movers:'24h 涨幅',
+        watchlist:'自选',
+        export:'导出 CSV',
+        totalMc:'分类总市值 (USD)',
+        count:'平台币数量',
+        avgLiq:'平均流动性 (Vol/MC)',
+        avgMom:'平均动量 (7D)',
+        hint:'选择最多 3 个平台币进行雷达对比。',
+        radarTitle:'雷达对比',
+        metrics:'指标说明',
+        disclaimer:'数据来自 CoinGecko，仅供参考，非投资建议。',
+        thToken:'平台币', thPrice:'价格', th24h:'24h%', th7d:'7d%', thMc:'市值', thLiq:'流动性(Vol/MC)', thVol:'7d波动(σ)', thAth:'距ATH', thCompare:'对比', thWatch:'自选', thLink:'链接',
+        linkCg:'CoinGecko', linkEx:'交易所',
+        toastMax:'最多选择 3 个进行对比'
+      },
+      en: {
+        subtitle:'Centralized Exchange (CEX) Platform Token Radar',
+        lang:'中文 / EN',
+        follow:'Follow',
+        reload:'Reload',
+        updating:'Loading...',
+        top10:'Top 10',
+        movers:'24h Movers',
+        watchlist:'Watchlist',
+        export:'Export CSV',
+        totalMc:'Category Total MktCap (USD)',
+        count:'Tokens',
+        avgLiq:'Avg Liquidity (Vol/MC)',
+        avgMom:'Avg Momentum (7D)',
+        hint:'Select up to 3 tokens to compare on radar.',
+        radarTitle:'Radar Comparison',
+        metrics:'Metrics',
+        disclaimer:'Data from CoinGecko. Not financial advice.',
+        thToken:'Token', thPrice:'Price', th24h:'24h%', th7d:'7d%', thMc:'MktCap', thLiq:'Liquidity(Vol/MC)', thVol:'7d Vol(σ)', thAth:'From ATH', thCompare:'Compare', thWatch:'Watch', thLink:'Links',
+        linkCg:'CoinGecko', linkEx:'Exchange',
+        toastMax:'You can compare up to 3 tokens'
+      }
+    };
+    let lang = 'zh';
+    const $ = s=>document.querySelector(s);
+    const $$ = s=>document.querySelectorAll(s);
+    const fmt = {
+      n: (v, d=2)=> (v==null||isNaN(v))? '—' : Number(v).toLocaleString(undefined,{maximumFractionDigits:d}),
+      usd: v=> (v==null||isNaN(v))? '—' : '$'+Number(v).toLocaleString(undefined,{maximumFractionDigits:0}),
+      pct: v=> (v==null||isNaN(v))? '—' : ((v>=0?'+':'')+Number(v).toFixed(2)+'%'),
+      pctNoSign: v=> (v==null||isNaN(v))? '—' : (Number(v).toFixed(2)+'%')
+    };
+
+    function applyI18n(){
+      $$('[data-i18n]').forEach(el=>{
+        const key = el.getAttribute('data-i18n');
+        if(i18nDict[lang][key]) el.textContent = i18nDict[lang][key];
+      });
+      $('#searchInput').setAttribute('placeholder', lang==='zh' ? '搜索（名称/代号）' : 'Search (name/symbol)');
+    }
+    $('#langToggle').addEventListener('click',()=>{
+      lang = (lang==='zh'?'en':'zh');
+      applyI18n();
+    });
+    applyI18n();
+
+    // helpers
+    const getCache = ()=>{
+      try{
+        const raw = localStorage.getItem(CACHE_KEY);
+        if(!raw) return null;
+        const obj = JSON.parse(raw);
+        if(Date.now()-obj.ts>TTL_MS) return null;
+        return obj.data;
+      }catch{ return null }
+    };
+    const setCache = (data)=>{
+      try{ localStorage.setItem(CACHE_KEY, JSON.stringify({ts:Date.now(), data})) }catch{}
+    };
+
+    function stdev(arr){
+      if(!arr || arr.length<2) return 0;
+      const mean = arr.reduce((a,b)=>a+b,0)/arr.length;
+      const v = arr.reduce((a,b)=>a+(b-mean)*(b-mean),0)/ (arr.length-1);
+      return Math.sqrt(v);
+    }
+
+    function computeMetrics(items){
+      items.forEach(it=>{
+        const mc = it.market_cap || 0;
+        const vol = it.total_volume || 0;
+        it.liq = mc>0 ? vol/mc : 0;                    // liquidity ratio
+        it.mom7d = it.price_change_percentage_7d_in_currency ?? null;
+        it.trend1y = it.price_change_percentage_1y_in_currency ?? null;
+        let vols = 0;
+        if(it.sparkline_in_7d && Array.isArray(it.sparkline_in_7d.price) && it.sparkline_in_7d.price.length>2){
+          const p = it.sparkline_in_7d.price;
+          const rets = [];
+          for(let i=1;i<p.length;i++){
+            const r = (p[i]-p[i-1])/p[i-1];
+            if(isFinite(r)) rets.push(r);
+          }
+          const sigma = stdev(rets);
+          vols = sigma*100;
+        }
+        it.vol7d = vols;                               // %
+        // 统一“距 ATH”为回撤（正值）
+        it.ddFromATH = (it.ath_change_percentage==null) ? null : Math.max(0, -it.ath_change_percentage);
+      });
+      return items;
+    }
+
+    function buildScales(items){
+      function range(getter){
+        const vals = items.map(getter).filter(v=>v!=null && isFinite(v));
+        const min = Math.min(...vals), max=Math.max(...vals);
+        return {min, max, span: (max-min)||1};
+      }
+      const rSize = range(d=>Math.log((d.market_cap||0)+1));
+      const rLiq = range(d=>d.liq);
+      const rMom = range(d=>d.mom7d ?? 0);
+      const rVol = range(d=>d.vol7d ?? 0);
+      const rATH = range(d=>d.ddFromATH ?? 0);
+      const rTrend = range(d=>d.trend1y ?? 0);
+
+      function norm(v, r, invert=false){
+        if(v==null || !isFinite(v)) return 0;
+        const x = (v - r.min)/r.span;
+        const clamped = Math.max(0, Math.min(1, x));
+        return Math.round( (invert? (1-clamped): clamped) * 100 );
+      }
+      return {
+        toRadar: (d)=>({
+          size: norm(Math.log((d.market_cap||0)+1), rSize, false),
+          liq: norm(d.liq, rLiq, false),
+          mom: norm(d.mom7d ?? 0, rMom, false),
+          stab: norm(d.vol7d ?? 0, rVol, true),
+          ath: norm(d.ddFromATH ?? 0, rATH, true),
+          trend: norm(d.trend1y ?? 0, rTrend, false),
+        })
+      };
+    }
+
+    // state
+    let all = [];
+    let view = [];
+    let selected = [];
+    let watch = new Set(JSON.parse(localStorage.getItem('watchlist_cex')||'[]'));
+    const saveWatch = ()=> localStorage.setItem('watchlist_cex', JSON.stringify([...watch]));
+
+    // radar
+    const radarChart = echarts.init(document.getElementById('radar'));
+    function renderRadar(){
+      const axes = [
+        { name:'Size', max:100 }, { name:'Liquidity', max:100 }, { name:'Momentum', max:100 },
+        { name:'Stability', max:100 }, { name:'ATH Proximity', max:100 }, { name:'1Y Trend', max:100 }
+      ];
+      const selectedItems = all.filter(x=> selected.includes(x.id) );
+      const scales = buildScales(all);
+      const series = selectedItems.map(d=> {
+        const s = scales.toRadar(d);
+        return {
+          name: `${d.name} (${d.symbol.toUpperCase()})`,
+          value: [s.size, s.liq, s.mom, s.stab, s.ath, s.trend],
+          areaStyle: {opacity:.15}
+        }
+      });
+      radarChart.setOption({
+        backgroundColor:'transparent',
+        tooltip:{ trigger:'item' },
+        legend:{ top: 0, data: series.map(s=>s.name) },
+        radar:{ indicator: axes, radius: '65%' },
+        series:[{ type:'radar', data: series }]
+      });
+      // chips
+      const wrap = document.getElementById('selectedChips');
+      wrap.innerHTML = '';
+      selectedItems.forEach(d=>{
+        const el = document.createElement('div');
+        el.className = 'chip bg-white/80 rounded-xl px-2 py-1 flex items-center gap-2';
+        el.innerHTML = `<img src="${d.image}" class="token-ic"/> <span class="text-sm">${d.symbol.toUpperCase()}</span>
+                        <button data-del="${d.id}" class="text-xs px-2 py-0.5 rounded bg-black/80 text-white">X</button>`;
+        wrap.appendChild(el);
+      });
+      wrap.querySelectorAll('button[data-del]').forEach(btn=>{
+        btn.onclick = ()=>{
+          const id = btn.getAttribute('data-del');
+          selected = selected.filter(x=>x!==id);
+          renderRadar();
+          renderTable();
+        };
+      });
+    }
+
+    // table
+    function renderTable(){
+      const tb = document.getElementById('tableBody');
+      tb.innerHTML = '';
+      view.forEach(d=>{
+        const tr = document.createElement('tr');
+        const pct24 = d.price_change_percentage_24h_in_currency;
+        const pct7 = d.price_change_percentage_7d_in_currency;
+        const ddAth = d.ddFromATH;
+        const liq = d.liq;
+        const vol = d.vol7d;
+        const cgUrl = `https://www.coingecko.com/zh/coins/${d.id}`;
+        const exUrl = guessExchangeUrl(d);
+        const checked = selected.includes(d.id) ? 'checked' : '';
+        const watched = watch.has(d.id);
+
+        tr.className = "border-b border-white/60 hover:bg-white/50";
+        tr.innerHTML = `
+          <td class="p-2 pr-1"><img src="${d.image}" class="token-ic" loading="lazy"/></td>
+          <td class="p-2">
+            <div class="font-medium ellipsis">${d.name}</div>
+            <div class="text-xs text-slate-600">${d.symbol.toUpperCase()}</div>
+          </td>
+          <td class="p-2 text-right">${fmt.n(d.current_price)}</td>
+          <td class="p-2 text-right ${pct24>=0?'text-emerald-600':'text-rose-600'}">${fmt.pct(pct24)}</td>
+          <td class="p-2 text-right ${pct7>=0?'text-emerald-600':'text-rose-600'}">${fmt.pct(pct7)}</td>
+          <td class="p-2 text-right">${fmt.usd(d.market_cap)}</td>
+          <td class="p-2 text-right">${isFinite(liq)? (liq*100).toFixed(2)+'%':'—'}</td>
+          <td class="p-2 text-right">${isFinite(vol)? vol.toFixed(2)+'%':'—'}</td>
+          <td class="p-2 text-right">${ddAth!=null? ddAth.toFixed(2)+'%':'—'}</td>
+          <td class="p-2 text-center">
+            <input aria-label="compare ${d.symbol}" type="checkbox" data-compare="${d.id}" ${checked} class="w-4 h-4 accent-cyan-500">
+          </td>
+          <td class="p-2 text-center">
+            <button data-watch="${d.id}" class="px-2 py-1 rounded border border-slate-200 ${watched?'bg-amber-400 text-black':'bg-white text-slate-700'}">${watched?'★':'☆'}</button>
+          </td>
+          <td class="p-2 pr-3 text-left whitespace-nowrap">
+            <a class="text-sky-600 underline mr-2" href="${cgUrl}" target="_blank" rel="noopener">CoinGecko</a>
+            ${exUrl? `<a class="text-sky-600 underline" href="${exUrl}" target="_blank" rel="noopener">${i18nDict[lang].linkEx}</a>`:''}
+          </td>
+        `;
+        tb.appendChild(tr);
+      });
+
+      // bind
+      document.querySelectorAll('input[type=checkbox][data-compare]').forEach(ch=>{
+        ch.onchange = ()=>{
+          const id = ch.getAttribute('data-compare');
+          if(ch.checked){
+            if(selected.length>=3){
+              ch.checked = false;
+              toast(i18nDict[lang].toastMax);
+              return;
+            }
+            selected.push(id);
+          }else{
+            selected = selected.filter(x=>x!==id);
+          }
+          renderRadar();
+        };
+      });
+      document.querySelectorAll('button[data-watch]').forEach(btn=>{
+        btn.onclick = ()=>{
+          const id = btn.getAttribute('data-watch');
+          if(watch.has(id)) watch.delete(id); else watch.add(id);
+          saveWatch();
+          renderTable();
+        }
+      });
+    }
+
+    function toast(msg){
+      const t = document.createElement('div');
+      t.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-2 rounded-xl shadow text-sm';
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(()=> t.remove(), 2000);
+    }
+
+    function applyFilterSort(){
+      const q = document.getElementById('searchInput').value.trim().toLowerCase();
+      const sort = document.getElementById('sortSelect').value;
+      const activeBtn = document.querySelector('button[data-filter].active');
+      const filter = activeBtn?.getAttribute('data-filter') || null;
+
+      let arr = [...all];
+
+      if(q){
+        arr = arr.filter(d=> d.name.toLowerCase().includes(q) || d.symbol.toLowerCase().includes(q) );
+      }
+
+      if(filter==='top10'){
+        arr = arr.slice(0,10);
+      }else if(filter==='movers'){
+        arr = [...arr].sort((a,b)=>(b.price_change_percentage_24h_in_currency??-1e9)-(a.price_change_percentage_24h_in_currency??-1e9)).slice(0,20);
+      }else if(filter==='watch'){
+        arr = arr.filter(d=> watch.has(d.id));
+      }
+
+      const sorters = {
+        'mc_desc': (a,b)=>(b.market_cap||0)-(a.market_cap||0),
+        'mc_asc': (a,b)=>(a.market_cap||0)-(b.market_cap||0),
+        'pct24_desc': (a,b)=>(b.price_change_percentage_24h_in_currency??-1e9)-(a.price_change_percentage_24h_in_currency??-1e9),
+        'pct24_asc': (a,b)=>(a.price_change_percentage_24h_in_currency??1e9)-(b.price_change_percentage_24h_in_currency??1e9),
+        'liq_desc': (a,b)=>(b.liq||0)-(a.liq||0),
+        'liq_asc': (a,b)=>(a.liq||0)-(b.liq||0),
+        'mom7d_desc': (a,b)=>(b.mom7d??-1e9)-(a.mom7d??-1e9),
+        'mom7d_asc': (a,b)=>(a.mom7d??1e9)-(b.mom7d??1e9),
+        'ath_desc': (a,b)=> (Math.abs(a.ath_change_percentage??-1e9)) - (Math.abs(b.ath_change_percentage??-1e9)),
+        'ath_asc':  (a,b)=> (Math.abs(b.ath_change_percentage??1e9)) - (Math.abs(a.ath_change_percentage??1e9)),
+      };
+      arr.sort(sorters[sort] || sorters['mc_desc']);
+
+      view = arr;
+      renderTable();
+    }
+
+    // filter chip 绑定：只切换 active 类
+    document.querySelectorAll('button[data-filter]').forEach(btn=>{
+      btn.onclick = ()=>{
+        document.querySelectorAll('button[data-filter]').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        applyFilterSort();
+      }
+    });
+    document.getElementById('sortSelect').onchange = applyFilterSort;
+    document.getElementById('searchInput').oninput = applyFilterSort;
+
+    // export CSV
+    document.getElementById('exportCsv').onclick = ()=>{
+      const headers = ['id','symbol','name','price','pct24h','pct7d','market_cap','volume','liq_ratio','vol7d_sigma','drawdown_from_ath_pct'];
+      const rows = view.map(d=>[
+        d.id, d.symbol, d.name, d.current_price, d.price_change_percentage_24h_in_currency,
+        d.price_change_percentage_7d_in_currency, d.market_cap, d.total_volume, d.liq, d.vol7d, d.ddFromATH
+      ]);
+      const csv = [headers.join(','), ...rows.map(r=>r.map(x=> (x==null?'':String(x).replace(/,/g,'') )).join(','))].join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'cex_platform_tokens.csv'; a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    // reload
+    document.getElementById('reloadBtn').onclick = ()=>{
+      localStorage.removeItem(CACHE_KEY);
+      init(true);
+    };
+
+    // guess exchange url
+    function guessExchangeUrl(d){
+      const name = (d.name||'').toLowerCase();
+      const sym = (d.symbol||'').toLowerCase();
+      if(name.includes('binance') || sym==='bnb') return 'https://www.binance.com/';
+      if(name.includes('okx') || sym==='okb') return 'https://www.okx.com/';
+      if(name.includes('kucoin') || sym==='kcs') return 'https://www.kucoin.com/';
+      if(name.includes('gate') || sym==='gt') return 'https://www.gate.io/';
+      if(name.includes('huobi') || name.includes('htx') || sym==='ht') return 'https://www.htx.com/';
+      if(name.includes('bybit') || sym==='bit') return 'https://www.bybit.com/';
+      if(name.includes('mexc') || sym==='mx') return 'https://www.mexc.com/';
+      if(name.includes('bitget') || sym==='bgb') return 'https://www.bitget.com/';
+      if(name.includes('bitfinex') || sym==='leo') return 'https://www.bitfinex.com/';
+      if(name.includes('whitebit') || sym==='wbt') return 'https://whitebit.com/';
+      if(name.includes('crypto.com') || sym==='cro') return 'https://crypto.com/exchange';
+      if(name.includes('coinbase') || sym==='coin') return 'https://www.coinbase.com/';
+      if(name.includes('bingx')) return 'https://bingx.com/';
+      if(name.includes('xt.com') || sym==='xt') return 'https://www.xt.com/';
+      return '';
+    }
+
+    function updateSummary(){
+      const sumMc = all.reduce((a,b)=>a+(b.market_cap||0),0);
+      const avgLiq = all.reduce((a,b)=>a+(b.liq||0),0)/ (all.length || 1);
+      const avgMom = all.reduce((a,b)=>a+(b.mom7d||0),0)/ (all.length || 1);
+      document.getElementById('sumMc').textContent = fmt.usd(sumMc);
+      document.getElementById('tokenCount').textContent = fmt.n(all.length,0);
+      document.getElementById('avgLiq').textContent = isFinite(avgLiq) ? (avgLiq*100).toFixed(2)+'%' : '—';
+      document.getElementById('avgMom').textContent = isFinite(avgMom) ? fmt.pct(avgMom) : '—';
+      const t = new Date();
+      document.getElementById('lastUpdated').textContent = (lang==='zh'?'更新于：':'Updated: ') + t.toLocaleString();
+    }
+
+    async function fetchData(force=false){
+      const cached = !force && getCache();
+      if(cached) return cached;
+      const res = await fetch(API, {headers:{'accept':'application/json'}});
+      if(!res.ok) throw new Error('API error');
+      const data = await res.json();
+      setCache(data);
+      return data;
+    }
+
+    async function init(force=false){
+      document.getElementById('lastUpdated').textContent = i18nDict[lang].updating;
+      try{
+        const raw = await fetchData(force);
+        const enriched = computeMetrics(raw);
+        all = enriched;
+        selected = [];
+        applyFilterSort();
+        updateSummary();
+        renderRadar();
+      }catch(e){
+        console.error(e);
+        document.getElementById('lastUpdated').textContent = (lang==='zh'?'加载失败，请重试':'Failed to load. Please retry');
+      }
+    }
+
+    // start
+    init();
+
+    // responsive
+    window.addEventListener('resize', ()=> radarChart.resize() );
+  })();
+  </script>
+</body>
+</html>
